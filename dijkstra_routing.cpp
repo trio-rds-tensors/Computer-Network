@@ -1,188 +1,167 @@
 /*
- * Dijkstra's Shortest Path Algorithm - Network Routing Simulation
- * -------------------------------------------------------------------
- * Models a network as a weighted, undirected graph where:
- *   - Nodes  = routers / hosts
- *   - Edges  = links between routers
- *   - Weight = link cost (e.g. delay, hop metric, bandwidth cost)
- *
- * Dijkstra's algorithm computes the minimum-cost path from a source
- * router to every other router in the network - exactly the kind of
- * computation link-state routing protocols (like OSPF) perform to
- * build their routing tables.
- *
- * Implementation uses an adjacency list + a min-priority-queue
- * (O((V+E) log V)) and reconstructs the actual path for each
- * destination, not just the distance.
- */
+    Dijkstra's Algorithm - Least-Cost Path Routing Simulation
+    -------------------------------------------------------------
+    This program simulates link-state routing using Dijkstra's shortest
+    (least-cost) path algorithm, commonly used in protocols like OSPF.
 
-#include <iostream>
-#include <vector>
-#include <queue>
-#include <climits>
-#include <iomanip>
-#include <string>
-#include <algorithm>
+    What this program does:
+      1. Builds a weighted network graph (nodes = routers, edge weight = link cost)
+      2. Runs Dijkstra's algorithm from a source node to find the least-cost
+         path to every other node in the network
+      3. Prints the routing table: Destination, Least Cost, Next Hop, and
+         the full path taken
+      4. Uses a min-priority-queue for efficient O((V+E) log V) computation
+
+    Compile:  g++ -std=c++17 -O2 dijkstra_routing.cpp -o dijkstra
+    Run:      ./dijkstra
+*/
+
+#include <bits/stdc++.h>
 using namespace std;
 
-const int INF = INT_MAX;
+const int INF = 999999;
 
-struct Edge {
-    int to;
-    int weight;
-};
-
-class NetworkGraph {
+class DijkstraRouting {
 private:
-    int numNodes;
-    vector<vector<Edge>> adj;
-    vector<string> nodeNames;
+    int n;                                      // number of nodes
+    vector<string> nodeNames;                   // node labels
+    vector<vector<pair<int,int>>> adj;           // adjacency list: adj[u] = {(v, cost), ...}
 
 public:
-    NetworkGraph(int n) : numNodes(n), adj(n), nodeNames(n) {
-        for (int i = 0; i < n; i++) nodeNames[i] = "R" + to_string(i);
+    DijkstraRouting(int numNodes, vector<string> names) {
+        n = numNodes;
+        nodeNames = names;
+        adj.assign(n, {});
     }
 
-    void setNodeName(int id, const string &name) {
-        if (id >= 0 && id < numNodes) nodeNames[id] = name;
-    }
-
-    string name(int id) const { return nodeNames[id]; }
-
-    // Add a bidirectional link between two routers with a given cost
-    void addLink(int u, int v, int cost) {
+    // Add a bidirectional link between u and v with the given cost
+    void addEdge(int u, int v, int cost) {
         adj[u].push_back({v, cost});
         adj[v].push_back({u, cost});
     }
 
-    // Run Dijkstra's algorithm from 'source'.
-    // Fills dist[] with shortest cost to every node, and parent[]
-    // to allow path reconstruction.
-    void dijkstra(int source, vector<int> &dist, vector<int> &parent) const {
-        dist.assign(numNodes, INF);
-        parent.assign(numNodes, -1);
-        vector<bool> visited(numNodes, false);
+    // Runs Dijkstra's algorithm from the given source node
+    void runDijkstra(int source) {
+        vector<int> dist(n, INF);
+        vector<int> parent(n, -1);
+        vector<bool> visited(n, false);
 
-        // min-heap of (distance, node)
-        priority_queue<pair<int,int>, vector<pair<int,int>>, greater<>> pq;
+        // Min-heap of (distance, node)
+        priority_queue<pair<int,int>, vector<pair<int,int>>, greater<pair<int,int>>> pq;
 
         dist[source] = 0;
         pq.push({0, source});
 
-        cout << "\n--- Dijkstra trace from source " << nodeNames[source] << " ---\n";
+        cout << "\n===== Running Dijkstra's Algorithm from Source Node "
+             << nodeNames[source] << " =====\n";
 
+        int step = 0;
         while (!pq.empty()) {
             auto [d, u] = pq.top();
             pq.pop();
 
-            if (visited[u]) continue;   // stale entry, skip
+            if (visited[u]) continue;
             visited[u] = true;
+            step++;
 
-            cout << "Finalized " << nodeNames[u]
-                 << " with shortest distance = " << d << "\n";
+            cout << "Step " << step << ": Finalized node " << nodeNames[u]
+                 << " with least cost " << d << "\n";
 
-            for (const Edge &e : adj[u]) {
-                if (visited[e.to]) continue;
-                int newDist = dist[u] + e.weight;
-                if (newDist < dist[e.to]) {
-                    dist[e.to] = newDist;
-                    parent[e.to] = u;
-                    pq.push({newDist, e.to});
-                    cout << "  Relax edge " << nodeNames[u] << " -> " << nodeNames[e.to]
-                         << " (cost " << e.weight << "): new best dist = " << newDist << "\n";
+            for (auto &[v, cost] : adj[u]) {
+                if (!visited[v] && dist[u] + cost < dist[v]) {
+                    dist[v] = dist[u] + cost;
+                    parent[v] = u;
+                    pq.push({dist[v], v});
                 }
             }
         }
+
+        printRoutingTable(source, dist, parent);
     }
 
-    // Reconstruct path from source to dest using the parent array
-    vector<int> reconstructPath(int source, int dest, const vector<int> &parent) const {
+    // Reconstructs and prints the path from source to destination
+    string getPath(int source, int dest, const vector<int> &parent) {
+        if (dest != source && parent[dest] == -1)
+            return "No path";
+
         vector<int> path;
-        if (parent[dest] == -1 && dest != source) return path; // unreachable
-
-        for (int at = dest; at != -1; at = parent[at]) {
+        for (int at = dest; at != -1; at = parent[at])
             path.push_back(at);
-            if (at == source) break;
-        }
         reverse(path.begin(), path.end());
-        return path;
+
+        string result;
+        for (size_t i = 0; i < path.size(); i++) {
+            result += nodeNames[path[i]];
+            if (i != path.size() - 1) result += " -> ";
+        }
+        return result;
     }
 
-    void printRoutingTable(int source, const vector<int> &dist, const vector<int> &parent) const {
-        cout << "\n================ Routing Table for " << nodeNames[source]
-             << " ================\n";
-        cout << left << setw(12) << "Destination"
-             << setw(12) << "Cost"
-             << "Path\n";
+    // Prints the final routing table: Destination, Cost, Next Hop, Full Path
+    void printRoutingTable(int source, const vector<int> &dist, const vector<int> &parent) {
+        cout << "\n----------------------------------------------------------\n";
+        cout << "Routing Table for Source Node " << nodeNames[source] << ":\n";
+        cout << "----------------------------------------------------------\n";
+        cout << left << setw(14) << "Destination"
+             << setw(10) << "Cost"
+             << setw(12) << "Next Hop"
+             << "Full Path\n";
+        cout << "----------------------------------------------------------\n";
 
-        for (int v = 0; v < numNodes; v++) {
-            if (v == source) continue;
-            cout << left << setw(12) << nodeNames[v];
-            if (dist[v] == INF) {
-                cout << setw(12) << "INF" << "unreachable\n";
+        for (int dest = 0; dest < n; dest++) {
+            if (dest == source) continue;
+
+            cout << left << setw(14) << nodeNames[dest];
+
+            if (dist[dest] >= INF) {
+                cout << setw(10) << "INF" << setw(12) << "-" << "No path\n";
                 continue;
             }
-            cout << setw(12) << dist[v];
 
-            vector<int> path = reconstructPath(source, v, parent);
-            for (size_t i = 0; i < path.size(); i++) {
-                cout << nodeNames[path[i]];
-                if (i + 1 < path.size()) cout << " -> ";
-            }
-            cout << "\n";
+            cout << setw(10) << dist[dest];
+
+            // Find next hop: the node right after source on the path
+            int nextHop = dest;
+            while (parent[nextHop] != source && parent[nextHop] != -1)
+                nextHop = parent[nextHop];
+
+            cout << setw(12) << nodeNames[nextHop];
+            cout << getPath(source, dest, parent) << "\n";
         }
-        cout << "========================================================\n";
+        cout << "----------------------------------------------------------\n";
     }
 };
 
 int main() {
-    // ---------------------------------------------------------------
-    // Build a sample network topology (routers R0..R5)
+    // ------------------------------------------------------
+    // Example network topology (edit as needed)
     //
-    //        2         3
-    //   R0 ------- R1 ------- R2
-    //   |  \        |          |
-    //  4|   7\      1          5
-    //   |      \    |          |
-    //   R3 ------- R4 ------- R5
-    //        2           1
-    // ---------------------------------------------------------------
-    int n = 6;
-    NetworkGraph net(n);
+    //          2         3
+    //     A ------- B ------- C
+    //     |         |         |
+    //     6         1         5
+    //     |         |         |
+    //     D ------- E ------- F
+    //          2         4
+    //
+    // ------------------------------------------------------
 
-    net.setNodeName(0, "R0");
-    net.setNodeName(1, "R1");
-    net.setNodeName(2, "R2");
-    net.setNodeName(3, "R3");
-    net.setNodeName(4, "R4");
-    net.setNodeName(5, "R5");
+    vector<string> names = {"A", "B", "C", "D", "E", "F"};
+    DijkstraRouting network(names.size(), names);
 
-    net.addLink(0, 1, 2);   // R0 - R1
-    net.addLink(1, 2, 3);   // R1 - R2
-    net.addLink(0, 3, 4);   // R0 - R3
-    net.addLink(0, 4, 7);   // R0 - R4
-    net.addLink(1, 4, 1);   // R1 - R4
-    net.addLink(2, 5, 5);   // R2 - R5
-    net.addLink(3, 4, 2);   // R3 - R4
-    net.addLink(4, 5, 1);   // R4 - R5
+    network.addEdge(0, 1, 2);  // A - B, cost 2
+    network.addEdge(1, 2, 3);  // B - C, cost 3
+    network.addEdge(0, 3, 6);  // A - D, cost 6
+    network.addEdge(1, 4, 1);  // B - E, cost 1
+    network.addEdge(2, 5, 5);  // C - F, cost 5
+    network.addEdge(3, 4, 2);  // D - E, cost 2
+    network.addEdge(4, 5, 4);  // E - F, cost 4
 
-    cout << "==================================================\n";
-    cout << "   Dijkstra's Algorithm - Network Routing Demo\n";
-    cout << "==================================================\n";
-    cout << "Nodes: R0, R1, R2, R3, R4, R5\n";
-    cout << "Links (cost):\n";
-    cout << "  R0-R1(2)  R1-R2(3)  R0-R3(4)  R0-R4(7)\n";
-    cout << "  R1-R4(1)  R2-R5(5)  R3-R4(2)  R4-R5(1)\n";
+    // Run Dijkstra's algorithm from source node A
+    network.runDijkstra(0);
 
-    int source = 0;
-    vector<int> dist, parent;
-    net.dijkstra(source, dist, parent);
-    net.printRoutingTable(source, dist, parent);
-
-    // Demonstrate from a second source too, to show reusability
-    source = 2;
-    net.dijkstra(source, dist, parent);
-    net.printRoutingTable(source, dist, parent);
+    // Try another source node to show routing from a different router
+    network.runDijkstra(3); // from node D
 
     return 0;
 }
